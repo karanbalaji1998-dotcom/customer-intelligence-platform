@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 import joblib
+from src.scoring import score_customers
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
