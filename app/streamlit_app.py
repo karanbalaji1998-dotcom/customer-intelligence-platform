@@ -35,9 +35,19 @@ st.sidebar.info(
 )
 
 
+
 @st.cache_resource
 def load_model():
+    # model_path = PROJECT_ROOT / "models" / "churn_model.joblib"
+
+    if not MODEL_PATH.is_file():
+        st.error(f"Model file not found. Expected location: {model_path}")
+        st.write("Project root:", str(PROJECT_ROOT))
+        st.write("Models folder exists:", (PROJECT_ROOT / "models").is_dir())
+        st.stop()
+
     return joblib.load(MODEL_PATH)
+
 
 
 def assign_segments(data, risk_threshold=0.40):
