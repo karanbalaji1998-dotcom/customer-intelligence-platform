@@ -1,19 +1,135 @@
 # Customer Intelligence & Retention Platform
 
-A GitHub-ready machine learning project for customer churn prediction, customer lifetime value (CLV) estimation, and customer risk/value segmentation.
+An end-to-end machine learning project for **customer churn prediction, risk/value segmentation, and retention prioritization**, built using Python, scikit-learn, pandas, and Streamlit.
 
-> **Status:** Starter scaffold only. No model has been trained yet.
+**Live dashboard:** [Open the Customer Intelligence & Retention Platform](https://customer-intelligence-platform-fqwitkahhzqqkd8hts9yy5.streamlit.app/)
 
-## Project goals
+**Repository:** [GitHub source code](https://github.com/karanbalaji1998-dotcom/customer-intelligence-platform)
 
-- Validate and prepare customer-level data.
-- Train and evaluate churn models without data leakage.
-- Estimate CLV over an explicitly defined horizon using documented assumptions.
-- Combine churn risk and customer value into actionable segments.
-- Provide a Streamlit dashboard for exploration and prioritization.
-- Add tests, reproducible setup instructions, and model monitoring hooks.
+## Project Overview
 
-## Repository structure
+Customer churn can reduce recurring revenue and make customer acquisition investments less effective. This project demonstrates how machine learning can help identify customers at elevated churn risk and prioritize them for further retention analysis.
+
+The platform combines a trained classification pipeline with customer segmentation and illustrative financial estimates in an interactive dashboard.
+
+## Key Features
+
+- **Data preparation:** Handles missing values, numeric conversion, and mixed numerical/categorical customer features.
+- **Churn prediction:** Uses a scikit-learn pipeline with preprocessing and a Random Forest classifier.
+- **Model comparison:** Evaluates Logistic Regression and Random Forest using classification and ranking metrics.
+- **Risk scoring:** Generates customer-level churn probabilities.
+- **Risk/value segmentation:** Groups customers using predicted churn risk and monthly charges.
+- **Retention prioritization:** Ranks customers using a score combining predicted churn probability and estimated gross profit.
+- **Interactive dashboard:** Provides customer scoring and retention-priority exploration through Streamlit.
+
+## Technology Stack
+
+- Python
+- pandas and NumPy
+- scikit-learn
+- Streamlit
+- Joblib
+- Matplotlib
+- GitHub
+- Streamlit Community Cloud
+
+## Model Development and Evaluation
+
+The project uses the IBM Telco Customer Churn dataset, a public dataset containing customer attributes, service subscriptions, billing information, and churn labels.
+
+The modelling workflow includes:
+
+1. Data inspection and preparation.
+2. Stratified train/test splitting.
+3. Numerical imputation and scaling.
+4. Categorical imputation and one-hot encoding.
+5. Logistic Regression baseline.
+6. Random Forest classification.
+7. Evaluation using precision, recall, F1-score, ROC-AUC, and PR-AUC.
+8. Threshold exploration to understand the trade-off between identifying churners and generating false alarms.
+
+The preprocessing steps are packaged with the classifier in a scikit-learn pipeline to ensure consistent transformations during scoring.
+
+### Experimental Results
+
+| Metric | Logistic Regression | Random Forest |
+|---|---:|---:|
+| Accuracy | 0.806 | 0.772 |
+| Churn precision | 0.657 | 0.553 |
+| Churn recall | 0.559 | 0.735 |
+| Churn F1-score | 0.604 | 0.631 |
+| ROC-AUC | 0.842 | 0.842 |
+| PR-AUC | 0.633 | 0.648 |
+
+In this experiment, Random Forest achieved higher churn recall and F1-score, while Logistic Regression achieved higher accuracy and churn precision. Random Forest may be preferable when identifying more potentially churning customers is the priority, subject to the cost of false positives.
+
+These are experimental results on a held-out split, not evidence of performance in a live production environment. Threshold exploration and any subsequent model selection should be evaluated on separate validation data to avoid optimistic estimates.
+
+## Customer Segmentation
+
+Customers are categorized using predicted churn risk and monthly charges:
+
+- **High Risk – High Value:** Customers with elevated churn risk and higher monthly charges.
+- **High Risk – Lower Value:** Customers with elevated churn risk and lower monthly charges.
+- **Low Risk – High Value:** Customers with lower predicted churn risk and higher monthly charges.
+- **Low Risk – Lower Value:** Customers with lower predicted churn risk and lower monthly charges.
+
+These segments support prioritization and exploration. Monthly charges are used as a simple value proxy rather than a comprehensive measure of customer profitability.
+
+## Retention Prioritization
+
+The current retention priority score is:
+
+`Retention Priority Score = Predicted Churn Probability × Estimated Gross Profit`
+
+Estimated gross profit uses monthly charges, estimated active months, and an assumed 40% gross margin over a 12-month horizon.
+
+**Important assumptions and limitations:**
+
+- The classifier predicts the dataset's churn label; its probability is not automatically a calibrated 12-month churn probability.
+- Expected active months and financial estimates are illustrative until the time horizon and probability calibration are validated.
+- Monthly charges are not the same as realized revenue or customer lifetime value.
+- The priority score is a ranking heuristic, not a causal estimate of how much revenue a retention campaign will save.
+- No retention uplift or realized financial impact has been established.
+
+## Running the Project
+
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/karanbalaji1998-dotcom/customer-intelligence-platform.git
+cd customer-intelligence-platform
+```
+
+### 2. Install dependencies
+
+Python 3.12 is recommended to match the deployed application environment.
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+On Windows, activate the environment with:
+
+```bash
+.venv\Scripts\activate
+```
+
+### 3. Launch the dashboard
+
+```bash
+streamlit run app/streamlit_app.py
+```
+
+Ensure the trained model artifact is present at `models/churn_model.joblib`.
+
+### 4. Score customers
+
+Upload a CSV containing the model's expected input features. The file should include the required customer attributes and must not include the target label as an input feature.
+
+## Repository Structure
 
 ```text
 customer-intelligence-platform/
@@ -22,81 +138,29 @@ customer-intelligence-platform/
 ├── data/
 │   └── README.md
 ├── models/
-│   └── .gitkeep
+│   └── churn_model.joblib
 ├── notebooks/
 │   └── 01_data_understanding.ipynb
 ├── src/
-│   ├── __init__.py
-│   ├── config.py
-│   ├── data.py
-│   ├── features.py
-│   ├── churn.py
-│   ├── clv.py
-│   ├── segmentation.py
-│   └── monitoring.py
 ├── tests/
-│   ├── test_data.py
-│   ├── test_clv.py
-│   └── test_segmentation.py
-├── .gitignore
 ├── requirements.txt
 └── README.md
 ```
 
-## Quick start
+The structure above summarizes the principal project components. See the repository for the complete file listing.
 
-Python 3.10+ is recommended.
+## Future Improvements
 
-```bash
-python -m venv .venv
-# macOS/Linux:
-source .venv/bin/activate
-# Windows:
-# .venv\Scripts\activate
+- Calibrate churn probabilities and define a clear prediction horizon.
+- Tune classification thresholds on validation data.
+- Add calibration plots and precision-recall curves.
+- Add automated tests for data validation, segmentation, and financial calculations.
+- Add model and data drift monitoring.
+- Incorporate intervention costs and experimentally measured retention uplift.
+- Develop a more defensible customer lifetime value model using customer-level revenue and retention history.
 
-pip install -r requirements.txt
-```
+## Disclaimer
 
-### Data
+This project is a portfolio demonstration using a public dataset. Financial estimates are illustrative and should not be treated as validated customer lifetime value, realized business outcomes, or production retention recommendations.
 
-Put a permitted customer-level CSV in `data/raw/` (raw data is ignored by Git). See [`data/README.md`](data/README.md) for the expected fields and privacy guidance.
-
-The starter code does not assume a specific dataset schema. Update `src/config.py` and the feature/data functions after choosing a dataset.
-
-### Run the dashboard
-
-```bash
-streamlit run app/streamlit_app.py
-```
-
-The dashboard is a scaffold and will display setup guidance until trained artifacts are available.
-
-### Run tests
-
-```bash
-pytest -q
-```
-
-## Planned workflow
-
-1. Define the prediction target and observation date.
-2. Validate IDs, target labels, missingness, duplicates, and feature types.
-3. Split data into train/validation/test sets appropriately; use a time-based split if timestamps are available.
-4. Build a preprocessing pipeline fit on training data only.
-5. Compare a baseline against a tree-based model.
-6. Evaluate discrimination, precision/recall, calibration, and threshold trade-offs.
-7. Estimate CLV over a stated horizon with transparent assumptions.
-8. Segment customers using churn risk and value; validate segment sizes and business logic.
-9. Package the preprocessing and model together, add tests, and document limitations.
-
-## Important modelling notes
-
-- Avoid target leakage: only use features that would be available at scoring time.
-- Churn probability is not the same as a causal estimate of retention campaign uplift.
-- CLV is an estimate, not observed lifetime revenue. State horizon, margin, discounting, and retention assumptions.
-- A high-risk/high-value segment is a prioritization aid, not an automatic instruction to contact a customer.
-- Do not commit personal, confidential, or identifiable customer data, credentials, or API keys.
-
-## Current status
-
-This repository contains starter modules and tests only. No model training, performance results, or business impact claims have been produced yet.
+No confidential customer data or credentials should be committed to the repository.
