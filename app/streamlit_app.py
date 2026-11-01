@@ -37,7 +37,8 @@ page = st.sidebar.radio(
         "Overview",
         "Customer Risk Scoring",
         "Retention Priorities",
-        "Model Evaluation"
+        "Model Evaluation",
+        "Business Impact Simulator"
     ],
 )
 
