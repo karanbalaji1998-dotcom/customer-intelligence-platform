@@ -178,29 +178,42 @@ elif page == "Customer Risk Scoring":
 
                 # MonthlyCharges is needed for value segmentation.
                 if "MonthlyCharges" in features.columns:
+                    
                     results["MonthlyCharges"] = features[
                         "MonthlyCharges"
                     ].to_numpy()
+                    
                     results = assign_segments(results)
-
-                    results["expected_active_months_12m"] = (
-                        12 * (
-                            1 - results["churn_probability"]
-                        ) ** (1 / 12)
+                    
+                    # Illustrative estimate assuming churn_probability is
+                    # the probability of churn over the next 12 months.
+                    p = results["churn_probability"].clip(0, 1)
+                    
+                    monthly_survival = (1 - p) ** (1 / 12)
+                    
+                    # Expected active months over a 12-month horizon.
+                    results["expected_active_months_12m"] = np.where(
+                        p < 1,
+                        (1 - (1 - p)) / (1 - monthly_survival),
+                        0.0
                     )
+                    
                     results["expected_revenue_12m"] = (
                         results["MonthlyCharges"]
                         * results["expected_active_months_12m"]
                     )
+                    
+                    gross_margin = 0.40
+                    
                     results["estimated_gross_profit_12m"] = (
-                        results["expected_revenue_12m"] * 0.40
+                        results["expected_revenue_12m"] * gross_margin
                     )
+                    
                     results["retention_priority_score"] = (
-                        results["churn_probability"]
-                        * results["estimated_gross_profit_12m"]
+                        p * results["estimated_gross_profit_12m"]
                     )
-
-                st.session_state["scored_customers"] = results
+                    
+                    st.session_state["scored_customers"] = results
 
                 st.success(f"Successfully scored {len(results):,} customers.")
 
