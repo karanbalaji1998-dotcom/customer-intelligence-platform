@@ -420,3 +420,196 @@ elif page == "Model Evaluation":
                 f"Unable to read model evaluation results: {exc}"
             )
 
+
+# -------------------------------------------------------------------
+# PAGE 5: BUSINESS IMPACT SIMULATOR
+# -------------------------------------------------------------------
+
+elif page == "Business Impact Simulator":
+    st.subheader("Business Impact Simulator")
+
+    st.markdown(
+        """
+        Explore hypothetical customer-retention campaign scenarios.
+        Adjust the budget, contact cost, and campaign success rate to
+        estimate the potential financial impact.
+        """
+    )
+
+    scored = st.session_state.get("scored_customers")
+
+    if scored is None or scored.empty:
+        st.info(
+            "First upload a customer CSV on the Customer Risk Scoring "
+            "page to generate customer-level estimates."
+        )
+
+    elif "estimated_gross_profit_12m" not in scored.columns:
+        st.warning(
+            "Financial estimates are unavailable. Upload a compatible "
+            "CSV containing MonthlyCharges and score it again."
+        )
+
+    else:
+        # Scenario assumptions.
+        st.sidebar.subheader("Campaign Assumptions")
+
+        budget = st.sidebar.number_input(
+            "Campaign budget (₹)",
+            min_value=0.0,
+            value=100000.0,
+            step=10000.0,
+        )
+
+        contact_cost = st.sidebar.number_input(
+            "Cost per contacted customer (₹)",
+            min_value=0.0,
+            value=100.0,
+            step=10.0,
+        )
+
+        success_rate = st.sidebar.slider(
+            "Assumed campaign success rate (%)",
+            min_value=0,
+            max_value=100,
+            value=15,
+            step=5,
+        ) / 100
+
+        risk_threshold = st.slider(
+            "Minimum churn probability for targeting",
+            min_value=0.0,
+            max_value=1.0,
+            value=0.40,
+            step=0.05,
+        )
+
+        # Target only customers above the selected risk threshold.
+        targets = scored.loc[
+            scored["churn_probability"] >= risk_threshold
+        ].copy()
+
+        # Limit campaign size by the available budget.
+        if contact_cost > 0:
+            affordable_contacts = int(budget // contact_cost)
+            campaign = targets.sort_values(
+                "retention_priority_score",
+                ascending=False,
+            ).head(affordable_contacts)
+        else:
+            campaign = targets.copy() if budget > 0 else targets.iloc[0:0].copy()
+
+        contacted = len(campaign)
+        campaign_cost = contacted * contact_cost
+
+        # These are scenario estimates, not causal model predictions.
+        assumed_retained_customers = contacted * success_rate
+
+        average_profit_at_risk = (
+            campaign["estimated_gross_profit_12m"].mean()
+            if contacted > 0
+            else 0.0
+        )
+
+        potential_profit_retained = (
+            assumed_retained_customers * average_profit_at_risk
+        )
+
+        estimated_net_impact = potential_profit_retained - campaign_cost
+
+        # Display results.
+        st.subheader("Scenario Results")
+
+        col1, col2, col3 = st.columns(3)
+
+        col1.metric(
+            "Eligible High-Risk Customers",
+            f"{len(targets):,}",
+        )
+
+        col2.metric(
+            "Customers Contacted",
+            f"{contacted:,}",
+        )
+
+        col3.metric(
+            "Estimated Campaign Cost",
+            f"₹{campaign_cost:,.0f}",
+        )
+
+        col4, col5, col6 = st.columns(3)
+
+        col4.metric(
+            "Assumed Retained Customers",
+            f"{assumed_retained_customers:,.1f}",
+        )
+
+        col5.metric(
+            "Potential Profit Retained",
+            f"₹{potential_profit_retained:,.0f}",
+        )
+
+        col6.metric(
+            "Estimated Net Impact",
+            f"₹{estimated_net_impact:,.0f}",
+        )
+
+        # Visualize the scenario.
+        chart_data = pd.DataFrame(
+            {
+                "Amount (₹)": [
+                    campaign_cost,
+                    potential_profit_retained,
+                    estimated_net_impact,
+                ]
+            },
+            index=[
+                "Campaign Cost",
+                "Potential Profit Retained",
+                "Estimated Net Impact",
+            ],
+        )
+
+        st.subheader("Financial Scenario Breakdown")
+        st.bar_chart(chart_data)
+
+        st.subheader("Proposed Campaign Audience")
+
+        if contacted > 0:
+            st.dataframe(
+                campaign[
+                    [
+                        "customerID",
+                        "churn_probability",
+                        "risk_band",
+                        "estimated_gross_profit_12m",
+                        "retention_priority_score",
+                    ]
+                ],
+                use_container_width=True,
+            )
+
+            st.download_button(
+                "Download Proposed Campaign Audience",
+                data=campaign.to_csv(index=False),
+                file_name="proposed_retention_campaign.csv",
+                mime="text/csv",
+            )
+        else:
+            st.info(
+                "No customers selected. Increase the budget or "
+                "lower the risk threshold."
+            )
+
+        st.warning(
+            "Illustrative scenario only: the success rate is a user "
+            "assumption, not a measured campaign uplift. The calculation "
+            "assumes estimated gross profit represents profit at risk "
+            "and that a successful intervention preserves it. Actual "
+            "incremental impact requires a controlled campaign experiment. "
+            "Model probabilities may not be calibrated."
+        )
+
+
+
+
