@@ -1,20 +1,25 @@
 
 """Customer Intelligence & Retention Platform dashboard."""
+
 from pathlib import Path
 import sys
+import traceback
 
-import numpy as np
+import joblib
 import pandas as pd
 import streamlit as st
-import joblib
-from src.scoring import score_customers
 
+# Ensure the project root is available for imports.
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from src.scoring import score_customers
+
 MODEL_PATH = PROJECT_ROOT / "models" / "churn_model.joblib"
 
+# Dashboard configuration.
 st.set_page_config(
     page_title="Customer Intelligence Platform",
     page_icon="📊",
@@ -25,9 +30,14 @@ st.title("Customer Intelligence & Retention Platform")
 st.caption("Churn risk • Customer value • Retention prioritization")
 
 st.sidebar.title("Navigation")
+
 page = st.sidebar.radio(
     "Select a page",
-    ["Overview", "Customer Risk Scoring", "Retention Priorities"],
+    [
+        "Overview",
+        "Customer Risk Scoring",
+        "Retention Priorities",
+    ],
 )
 
 st.sidebar.info(
@@ -36,57 +46,36 @@ st.sidebar.info(
 )
 
 
-
 @st.cache_resource
 def load_model():
-    # model_path = PROJECT_ROOT / "models" / "churn_model.joblib"
+    """Load the trained churn prediction pipeline."""
 
     if not MODEL_PATH.is_file():
-        st.error(f"Model file not found. Expected location: {model_path}")
-        st.write("Project root:", str(PROJECT_ROOT))
-        st.write("Models folder exists:", (PROJECT_ROOT / "models").is_dir())
-        st.stop()
+        raise FileNotFoundError(
+            f"Model file not found. Expected location: {MODEL_PATH}"
+        )
 
     return joblib.load(MODEL_PATH)
 
 
-
-def assign_segments(data, risk_threshold=0.40):
-    """Create transparent risk/value segments."""
-    high_value_threshold = data["MonthlyCharges"].quantile(0.75)
-
-    high_risk = data["churn_probability"] >= risk_threshold
-    high_value = data["MonthlyCharges"] >= high_value_threshold
-
-    data = data.copy()
-    data["customer_segment"] = np.select(
-        [
-            high_risk & high_value,
-            high_risk & ~high_value,
-            ~high_risk & high_value,
-        ],
-        [
-            "High Risk - High Value",
-            "High Risk - Lower Value",
-            "Low Risk - High Value",
-        ],
-        default="Low Risk - Lower Value",
-    )
-    return data
-
-
+# Initialize session state.
 if "scored_customers" not in st.session_state:
     st.session_state["scored_customers"] = None
 
 
+# -------------------------------------------------------------------
+# PAGE 1: OVERVIEW
+# -------------------------------------------------------------------
+
 if page == "Overview":
     st.subheader("Platform Overview")
+
     st.markdown(
         """
         This application demonstrates a customer analytics workflow:
 
         - Churn prediction using a trained machine-learning pipeline
-        - Customer risk/value segmentation
+        - Customer risk and value segmentation
         - Illustrative 12-month revenue and gross-profit estimates
         - Ranked customer retention priorities
         """
@@ -94,28 +83,52 @@ if page == "Overview":
 
     st.warning(
         "Use compatible customer feature columns for scoring. "
-        "Predicted probabilities and financial estimates require validation "
-        "before real business use."
+        "Validate model performance, probability calibration, and "
+        "financial assumptions before real business use."
     )
 
     scored = st.session_state["scored_customers"]
 
     if scored is not None and not scored.empty:
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Customers scored", f"{len(scored):,}")
-        c2.metric(
+        col1, col2, col3 = st.columns(3)
+
+        col1.metric(
+            "Customers scored",
+            f"{len(scored):,}",
+        )
+
+        col2.metric(
             "High-risk customers",
             f"{(scored['churn_probability'] >= 0.40).sum():,}",
         )
-        c3.metric(
+
+        col3.metric(
             "Average predicted churn risk",
             f"{scored['churn_probability'].mean():.1%}",
         )
 
-        st.subheader("Customer segments")
-        st.bar_chart(
-            scored["customer_segment"].value_counts()
+        if "customer_segment" in scored.columns:
+            st.subheader("Customer Segments")
+
+            segment_counts = (
+                scored["customer_segment"]
+                .value_counts()
+                .rename_axis("Customer Segment")
+                .rename("Customers")
+            )
+
+            st.bar_chart(segment_counts)
+
+        st.subheader("Highest-Risk Customers")
+
+        st.dataframe(
+            scored.sort_values(
+                "churn_probability",
+                ascending=False,
+            ).head(10),
+            use_container_width=True,
         )
+
     else:
         st.info(
             "No customers scored yet. Open Customer Risk Scoring "
@@ -123,18 +136,28 @@ if page == "Overview":
         )
 
 
+# -------------------------------------------------------------------
+# PAGE 2: CUSTOMER RISK SCORING
+# -------------------------------------------------------------------
+
 elif page == "Customer Risk Scoring":
     st.subheader("Customer Risk Scoring")
 
-    if not MODEL_PATH.exists():
+    if not MODEL_PATH.is_file():
         st.error(
-            "Model file not found at models/churn_model.joblib. "
-            "The trained model must be made available before scoring."
+            "The trained model was not found at "
+            "`models/churn_model.joblib`. Ensure the model artifact "
+            "is available in the deployment environment."
         )
+
     else:
         uploaded_file = st.file_uploader(
             "Upload customer feature CSV",
             type=["csv"],
+            help=(
+                "Upload a CSV with the feature columns expected by "
+                "the trained model. customerID and Churn are optional."
+            ),
         )
 
         if uploaded_file is not None:
@@ -142,106 +165,88 @@ elif page == "Customer Risk Scoring":
                 customer_data = pd.read_csv(uploaded_file)
 
                 if customer_data.empty:
-                    st.error("The uploaded CSV contains no rows.")
-                    st.stop()
-
-                customer_ids = (
-                    customer_data["customerID"].astype(str)
-                    if "customerID" in customer_data.columns
-                    else pd.Series(
-                        [f"Customer_{i+1}" for i in range(len(customer_data))]
+                    st.error(
+                        "The uploaded CSV contains no rows."
                     )
-                )
 
-                features = customer_data.drop(
-                    columns=["customerID", "Churn"],
-                    errors="ignore",
-                )
+                else:
+                    # Load the trained model and score customers.
+                    model = load_model()
 
-                model = load_model()
-                probabilities = model.predict_proba(features)[:, 1]
-
-                results = pd.DataFrame(
-                    {
-                        "customerID": customer_ids.to_numpy(),
-                        "churn_probability": probabilities,
-                    }
-                )
-
-                results["risk_band"] = np.select(
-                    [
-                        results["churn_probability"] >= 0.65,
-                        results["churn_probability"] >= 0.40,
-                    ],
-                    ["High", "Medium"],
-                    default="Low",
-                )
-
-                # MonthlyCharges is needed for value segmentation.
-                if "MonthlyCharges" in features.columns:
-                    
-                    results["MonthlyCharges"] = features[
-                        "MonthlyCharges"
-                    ].to_numpy()
-                    
-                    results = assign_segments(results)
-                    
-                    # Illustrative estimate assuming churn_probability is
-                    # the probability of churn over the next 12 months.
-                    p = results["churn_probability"].clip(0, 1)
-                    
-                    monthly_survival = (1 - p) ** (1 / 12)
-                    
-                    # Expected active months over a 12-month horizon.
-                    results["expected_active_months_12m"] = np.where(
-                        p < 1,
-                        (1 - (1 - p)) / (1 - monthly_survival),
-                        0.0
+                    results = score_customers(
+                        model,
+                        customer_data,
                     )
-                    
-                    results["expected_revenue_12m"] = (
-                        results["MonthlyCharges"]
-                        * results["expected_active_months_12m"]
-                    )
-                    
-                    gross_margin = 0.40
-                    
-                    results["estimated_gross_profit_12m"] = (
-                        results["expected_revenue_12m"] * gross_margin
-                    )
-                    
-                    results["retention_priority_score"] = (
-                        p * results["estimated_gross_profit_12m"]
-                    )
-                    
+
+                    # Always replace previous results to prevent stale data.
                     st.session_state["scored_customers"] = results
 
-                st.success(f"Successfully scored {len(results):,} customers.")
+                    # Explain which business outputs are available.
+                    if "MonthlyCharges" not in customer_data.columns:
+                        st.warning(
+                            "MonthlyCharges is missing. Churn-risk "
+                            "scores are available, but value-based "
+                            "segments and retention priorities "
+                            "cannot be calculated."
+                        )
 
-                st.dataframe(
-                    results.sort_values(
-                        "churn_probability", ascending=False
-                    ),
-                    use_container_width=True,
-                )
+                    st.success(
+                        f"Successfully scored {len(results):,} customers."
+                    )
 
-                st.download_button(
-                    "Download scored customers",
-                    data=results.to_csv(index=False),
-                    file_name="customer_churn_scores.csv",
-                    mime="text/csv",
-                )
+                    # Summary metrics.
+                    metric1, metric2, metric3 = st.columns(3)
+
+                    metric1.metric(
+                        "Customers Scored",
+                        f"{len(results):,}",
+                    )
+
+                    metric2.metric(
+                        "High Risk",
+                        f"{(results['churn_probability'] >= 0.65).sum():,}",
+                    )
+
+                    metric3.metric(
+                        "Medium or High Risk",
+                        f"{(results['churn_probability'] >= 0.40).sum():,}",
+                    )
+
+                    # Results table.
+                    st.subheader("Scored Customer Results")
+
+                    st.dataframe(
+                        results.sort_values(
+                            "churn_probability",
+                            ascending=False,
+                        ),
+                        use_container_width=True,
+                    )
+
+                    # Download scores.
+                    st.download_button(
+                        label="Download Scored Customers",
+                        data=results.to_csv(index=False),
+                        file_name="customer_churn_scores.csv",
+                        mime="text/csv",
+                    )
 
             except Exception as exc:
                 st.error(f"Scoring failed: {exc}")
-                import traceback
-                st.error("Scoring failed. Full error details:")
-                st.code(traceback.format_exc())
+
+                with st.expander("Technical error details"):
+                    st.code(traceback.format_exc())
+
                 st.caption(
-                    "Verify the feature names, column types, and required "
-                    "input columns match the training pipeline."
+                    "Check that the uploaded CSV contains the feature "
+                    "columns expected by the trained model, with "
+                    "compatible data types."
                 )
 
+
+# -------------------------------------------------------------------
+# PAGE 3: RETENTION PRIORITIES
+# -------------------------------------------------------------------
 
 elif page == "Retention Priorities":
     st.subheader("Retention Priorities")
@@ -253,26 +258,52 @@ elif page == "Retention Priorities":
             "Score a customer CSV first. Results will appear here "
             "for the current dashboard session."
         )
+
     elif "retention_priority_score" not in scored.columns:
         st.warning(
             "MonthlyCharges was missing, so value-based prioritization "
-            "cannot be calculated. Upload compatible features."
+            "cannot be calculated. Upload a compatible customer CSV."
         )
+
     else:
         ranked = scored.sort_values(
             "retention_priority_score",
             ascending=False,
         ).copy()
+
         ranked.insert(
             0,
             "priority_rank",
             range(1, len(ranked) + 1),
         )
 
-        st.dataframe(ranked, use_container_width=True)
+        # Priority summary.
+        col1, col2, col3 = st.columns(3)
+
+        col1.metric(
+            "Customers Ranked",
+            f"{len(ranked):,}",
+        )
+
+        col2.metric(
+            "High-Risk Customers",
+            f"{(ranked['churn_probability'] >= 0.40).sum():,}",
+        )
+
+        col3.metric(
+            "Average Priority Score",
+            f"{ranked['retention_priority_score'].mean():,.2f}",
+        )
+
+        st.subheader("Ranked Retention Opportunities")
+
+        st.dataframe(
+            ranked,
+            use_container_width=True,
+        )
 
         st.download_button(
-            "Download retention priorities",
+            label="Download Retention Priorities",
             data=ranked.to_csv(index=False),
             file_name="retention_priorities.csv",
             mime="text/csv",
@@ -280,6 +311,8 @@ elif page == "Retention Priorities":
 
         st.caption(
             "Priority score = predicted churn probability × estimated "
-            "12-month gross-profit proxy. This is a heuristic, not "
-            "estimated campaign savings."
+            "12-month gross-profit proxy. This is a prioritization "
+            "heuristic, not a causal estimate of campaign savings. "
+            "Financial estimates are illustrative and depend on "
+            "the validity of the underlying assumptions."
         )
