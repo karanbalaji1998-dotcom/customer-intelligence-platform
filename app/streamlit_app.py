@@ -220,6 +220,9 @@ elif page == "Customer Risk Scoring":
 
             except Exception as exc:
                 st.error(f"Scoring failed: {exc}")
+                import traceback
+                st.error("Scoring failed. Full error details:")
+                st.code(traceback.format_exc())
                 st.caption(
                     "Verify the feature names, column types, and required "
                     "input columns match the training pipeline."
