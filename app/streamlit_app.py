@@ -317,3 +317,105 @@ elif page == "Retention Priorities":
             "Financial estimates are illustrative and depend on "
             "the validity of the underlying assumptions."
         )
+    
+# -------------------------------------------------------------------
+# PAGE 4: MODEL EVALUATION
+# -------------------------------------------------------------------
+
+elif page == "Model Evaluation":
+    st.subheader("Model Evaluation")
+    st.caption("Offline evaluation results from the held-out test dataset.")
+
+    # Load the saved model comparison table.
+    METRICS_PATH = PROJECT_ROOT / "model_comparison.csv"
+
+    if not METRICS_PATH.is_file():
+        st.error(
+            "Model evaluation results were not found. "
+            "Ensure model_comparison.csv is committed to the "
+            "repository root."
+        )
+
+    else:
+        try:
+            comparison = pd.read_csv(
+                METRICS_PATH,
+                index_col=0,
+            )
+
+            if comparison.empty:
+                st.warning("The model comparison file contains no results.")
+
+            else:
+                # Display the complete model comparison.
+                st.subheader("Model Comparison")
+                st.dataframe(
+                    comparison.style.format("{:.3f}"),
+                    use_container_width=True,
+                )
+
+                # Let the user select a model for detailed metrics.
+                selected_model = st.selectbox(
+                    "Select model",
+                    comparison.index.tolist(),
+                )
+
+                metrics = comparison.loc[selected_model]
+
+                st.subheader(f"Performance: {selected_model}")
+
+                preferred_metrics = [
+                    "Accuracy",
+                    "Churn Precision",
+                    "Churn Recall",
+                    "Churn F1",
+                    "ROC-AUC",
+                    "PR-AUC (Average Precision)",
+                ]
+
+                available_metrics = [
+                    metric
+                    for metric in preferred_metrics
+                    if metric in metrics.index
+                ]
+
+                metric_columns = st.columns(
+                    min(len(available_metrics), 3)
+                )
+
+                for i, metric in enumerate(available_metrics):
+                    with metric_columns[i % len(metric_columns)]:
+                        st.metric(
+                            label=metric,
+                            value=f"{metrics[metric]:.3f}",
+                        )
+
+                # Compare discrimination metrics visually.
+                chart_metrics = [
+                    metric
+                    for metric in [
+                        "ROC-AUC",
+                        "PR-AUC (Average Precision)",
+                    ]
+                    if metric in comparison.columns
+                ]
+
+                if chart_metrics:
+                    st.subheader("Model Discrimination")
+
+                    st.bar_chart(
+                        comparison[chart_metrics]
+                    )
+
+                st.info(
+                    "These are offline test-set metrics, not live "
+                    "production performance. Precision and recall "
+                    "depend on the prediction threshold. ROC-AUC and "
+                    "PR-AUC use predicted probabilities."
+                )
+
+        except (ValueError, KeyError, OSError) as exc:
+            st.error(
+                f"Unable to read model evaluation results: {exc}"
+            )
+
